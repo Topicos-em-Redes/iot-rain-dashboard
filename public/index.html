@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+
+<html lang="pt-br">
+
+<head>
+
+  <!--Configurações-->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Fonte -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100..900;1,100..900&display=swap"
+    rel="stylesheet">
+
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+
+  <!-- Char.js -->
+  <script type="module" src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!--Node.js-->
+  <script type="module" src="/socket.io/socket.io.js"></script>
+  <script type="module" src="mqtt.js"></script>
+
+  <!--CSS-->
+  <link rel="stylesheet" href="style.css">
+
+  <title>Monitor de Chuva</title>
+  <link rel="icon" type="image/png" href="img/iconeSite.png">
+
+</head>
+
+<body>
+
+  <!-- Última leitura -->
+  <div id="caixa" class=" caixa">
+
+    <!-- BACKGROUND -->
+    <div class="bg bg1 ativo"></div>
+    <div class="bg bg2"></div>
+
+    <!-- CHUVA -->
+    <canvas id="chuva"></canvas>
+
+    <!-- CONTEÚDO -->
+    <div class="conteudo text-center">
+
+      <img class="sol" id="sol" src="img/sol-sem-fundo-2.png">
+      <div class="painel">
+
+        <h1 id="titulo">--</h1>
+
+        <p class="subtitulo">Última leitura</p>
+
+        <p id="valor" class="valor">--</p>
+
+        <p id="hora" class="hora">--</p>
+
+        <button onclick="location.href='#gerenciamento'" class="btn btn-outline-light">Mais</button>
+
+      </div>
+
+    </div>
+
+    <!-- FUNDO COLINAS -->
+    <div class="fundo">
+      <div class="colina colina1"></div>
+      <div class="colina colina2"></div>
+    </div>
+
+  </div>
+
+  <!-- Graficos -->
+  <div id="gerenciamento" class="dashboard">
+
+    <h1 id="tituloGerenciamento" class="titulo">Nenhum Valor Coletado</h1>
+
+    <div class="grid">
+
+      <!-- Grafico 1 -->
+      <div class="card text-center">
+        <h3>Leituras em Tempo Real</h3>
+        <canvas id="graficoTempoReal"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- JS Funcionalidades -->
+  <script type="module" src="app.js"></script>
+  <!-- JS Cenario -->
+  <script type="module" src="ui.js"></script>
+
+</body>
+
+</html>
