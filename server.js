@@ -21,7 +21,7 @@ app.use(express.static("public"));
 // Em caso de erro verificar o ip da maquina
 // terminal: "hostname -I"
 
-const mqttClient = mqtt.connect("mqtts://192.168.1.108:8883", {
+const mqttClient = mqtt.connect("mqtts://localhost:8883", {
 
     clientId: "monitor",
 
@@ -33,14 +33,17 @@ const mqttClient = mqtt.connect("mqtts://192.168.1.108:8883", {
 
     rejectUnauthorized: false,
 
-    reconnectPeriod: 0
+    reconnectPeriod: 0,
+
+    username: "monitor",
+    password: "1234"
 });
 
 mqttClient.on("connect", () => {
 
     console.log("MQTT conectado");
 
-    mqttClient.subscribe("interface");
+    mqttClient.subscribe("esp32/rain_sensor");
 });
 
 
