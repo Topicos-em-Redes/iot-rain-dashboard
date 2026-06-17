@@ -44,6 +44,15 @@ monitor.crt
 monitor.key
 ```
 
+# Configuração do Firebase
+
+No arquivo:
+
+```text
+firebase.js
+```
+Deve estar as configurações de acesso do Firebase.
+
 # Executando o Projeto
 
 ```bash
