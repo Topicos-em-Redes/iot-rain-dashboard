@@ -28,7 +28,7 @@ document.getElementById("titulo").innerText = "Nenhum Valor Coletado";
 //Background inicial
 trocarBackground(camadas, "linear-gradient(to bottom, #7bb2fd, #caddf6)");
 
-window.addEventListener("mqtt_data", (event) => {
+window.addEventListener("mqtt_message", (event) => {
 
   const msg = event.detail;
 

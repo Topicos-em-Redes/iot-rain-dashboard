@@ -1,4 +1,3 @@
-
 //Criando os icones
 //sol
 const imgSolIcon = new Image();
@@ -18,6 +17,8 @@ const VCHUVA = 3700;
 const VSOL = 4095;
 
 const canvas = document.getElementById("graficoTempoReal");
+
+const canvasPrevisao = document.getElementById("graficoPrevisao");
 
 //Funcão para carregar Icone do grafico
 function carregarImagem(img) {
@@ -39,10 +40,17 @@ Promise.all([
 
 ]).then(() => {
 
-  //criando a tela
+  //criando a tela 1
   const ctxGraficoTR = document
     .getElementById("graficoTempoReal")
     .getContext("2d");
+
+  //criando a tela 2
+  const ctxGraficoP = document
+    .getElementById("graficoPrevisao")
+    .getContext("2d");
+
+  
 
   //criando o grafico da tela
   const g1 = criarGrafico(
@@ -51,10 +59,16 @@ Promise.all([
     "Últimas 10 leituras do sensor de chuva",
   );
 
+  const gPrevisao = criarGraficoPrevisao(
+    ctxGraficoP,
+    "Previsão dos próximos 30 minutos"
+  );
+
   canvas.style.visibility = "hidden";
+  canvasPrevisao.style.visibility = "hidden";
 
   //verifica se ha uma nova mensagem do mqtt
-  window.addEventListener("mqtt_data", (event) => {
+  window.addEventListener("mqtt_message", (event) => {
 
     const msg = event.detail;
 
@@ -70,6 +84,18 @@ Promise.all([
 
     g1.adicionarDado(dado, horario);
 
+
+  });
+
+  window.addEventListener("forecast_update", (event) => {
+
+    document.getElementById("tituloGerenciamentoPrevisao").innerText = "";
+
+    canvasPrevisao.style.visibility = "visible";
+    
+    const previsoes = event.detail;
+
+    atualizarGraficoPrevisao(gPrevisao.grafico, previsoes);
 
   });
 
@@ -160,3 +186,98 @@ function criarGrafico(ctx, limite, legenda) {
   return { adicionarDado, grafico };
 }
 
+function atualizarGraficoPrevisao(grafico, previsoes) {
+
+  if (!Array.isArray(previsoes)) return;
+
+  const labels = [];
+  const valores = [];
+
+  previsoes
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .forEach(item => {
+
+      const horario = new Date(item.timestamp)
+        .toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+
+      labels.push(horario);
+
+      valores.push(verificarValor(item.payload));
+
+    });
+
+  grafico.data.labels = labels;
+  grafico.data.datasets[0].data = valores;
+
+  grafico.update();
+
+}
+
+function criarGraficoPrevisao(ctx, legenda) {
+
+  const dados = {
+
+    labels: [],
+
+    datasets: [
+      {
+        label: legenda,
+
+        data: [],
+
+        borderColor: "red",
+
+        borderWidth: 2,
+
+        borderDash: [5, 5],
+
+        tension: 0.4,
+
+        pointRadius: 5,
+
+        pointStyle: (context) => {
+
+          const valor = context.raw;
+
+          if (valor <= VCHUVAF) return imgTempestadeIcon;
+
+          if (valor <= VCHUVA) return imgChuvaIcon;
+
+          return imgSolIcon;
+        }
+      }
+    ]
+  };
+
+  const grafico = new Chart(ctx, {
+
+    type: "line",
+
+    data: dados,
+
+    options: {
+
+      responsive: true,
+
+      scales: {
+
+        y: {
+
+          beginAtZero: true,
+
+          max: 4095
+
+        }
+
+      }
+
+    }
+
+  });
+
+  return { grafico };
+
+}

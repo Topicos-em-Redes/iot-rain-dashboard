@@ -11,6 +11,9 @@ const server = http.createServer(app);
 
 const io = new Server(server);
 
+const { ref, onValue } = require("firebase/database");
+const { db } = require("./firebase");
+
 // ======= FRONTEND ========
 
 app.use(express.static("public"));
@@ -73,3 +76,21 @@ server.listen(3000, () => {
     console.log("Servidor rodando:");
     console.log("http://localhost:3000");
 });
+
+// ======= FIREBASE ========
+
+const previsaoRef = ref(db, "previsao");
+
+onValue(previsaoRef, (snapshot) => {
+
+    const previsao = snapshot.val() || {};
+
+    const previsaoArray = Object.values(previsao);
+
+    console.log("Previsão recebida:");
+    console.log(previsao);
+
+    io.emit("forecast_update", previsao);
+
+});
+

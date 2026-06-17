@@ -23,7 +23,7 @@
 
   <!--Node.js-->
   <script type="module" src="/socket.io/socket.io.js"></script>
-  <script type="module" src="mqtt.js"></script>
+  <script type="module" src="socket.js"></script>
 
   <!--CSS-->
   <link rel="stylesheet" href="style.css">
@@ -84,6 +84,21 @@
       <div class="card text-center">
         <h3>Leituras em Tempo Real</h3>
         <canvas id="graficoTempoReal"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="gerenciamento" class="dashboard">
+
+    <h1 id="tituloGerenciamentoPrevisao" class="titulo">Nenhum Valor Previsto</h1>
+
+    <div class="grid">
+
+      <!-- Grafico 2 -->
+      <div class="card text-center">
+        <h3>Previsão dos próximos 30 minutos</h3>
+        <canvas id="graficoPrevisao"></canvas>
       </div>
     </div>
 
