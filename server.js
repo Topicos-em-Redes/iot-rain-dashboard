@@ -11,7 +11,7 @@ const server = http.createServer(app);
 
 const io = new Server(server);
 
-const { ref, onValue } = require("firebase/database");
+const { ref, onValue, query, orderByKey, limitToLast } = require("firebase/database");
 const { db } = require("./firebase");
 
 // ======= FRONTEND ========
@@ -26,7 +26,7 @@ app.use(express.static("public"));
 
 const mqttClient = mqtt.connect("mqtts://localhost:8883", {
 
-    clientId: "monitor",
+    clientId: `monitor-${process.pid}`,
 
     protocol: "mqtts",
 
@@ -36,17 +36,40 @@ const mqttClient = mqtt.connect("mqtts://localhost:8883", {
 
     rejectUnauthorized: false,
 
-    reconnectPeriod: 0,
+    reconnectPeriod: 5000,
+    connectTimeout: 30000,
 
     username: "monitor",
     password: "1234"
 });
 
+function assinarTopicoMqtt() {
+    mqttClient.subscribe("esp32/rain_sensor", (err) => {
+        if (err) {
+            
+            console.log("ERRO MQTT subscribe:");
+            console.log(err.message);
+        }
+    });
+}
+
 mqttClient.on("connect", () => {
 
     console.log("MQTT conectado");
 
-    mqttClient.subscribe("esp32/rain_sensor");
+    assinarTopicoMqtt();
+});
+
+mqttClient.on("reconnect", () => {
+    console.log("MQTT reconectando...");
+});
+
+mqttClient.on("close", () => {
+    console.log("MQTT desconectado");
+});
+
+mqttClient.on("offline", () => {
+    console.log("MQTT offline");
 });
 
 
@@ -79,18 +102,54 @@ server.listen(3000, () => {
 
 // ======= FIREBASE ========
 
-const previsaoRef = ref(db, "previsao");
+const LIMITE_PREVISOES = 10;
+const previsaoRef = ref(db, "predicoes");
+const previsaoQuery = query(
+    previsaoRef,
+    orderByKey(),
+    limitToLast(LIMITE_PREVISOES)
+);
 
-onValue(previsaoRef, (snapshot) => {
+function extrairValorPrevisao(item) {
+    return item?.payload ?? item?.valor ?? item?.value ?? null;
+}
 
-    const previsao = snapshot.val() || {};
+function formatarPrevisoes(previsao) {
+    return Object.fromEntries(
+        Object.entries(previsao || {})
+            .filter(([, item]) => item && extrairValorPrevisao(item) != null)
+            .map(([id, item]) => [
+                id,
+                {
+                    id,
+                    payload: extrairValorPrevisao(item),
+                    timestamp: item.timestamp ?? null,
+                },
+            ])
+    );
+}
 
-    const previsaoArray = Object.values(previsao);
+let ultimaPrevisao = {};
 
-    console.log("Previsão recebida:");
-    console.log(previsao);
+function emitirPrevisoes(previsao) {
+    ultimaPrevisao = formatarPrevisoes(previsao);
 
-    io.emit("forecast_update", previsao);
+    console.log("Previsão recebida por id (últimas 10):");
+    console.log(ultimaPrevisao);
 
+    io.emit("forecast_update", ultimaPrevisao);
+}
+
+onValue(previsaoQuery, (snapshot) => {
+    emitirPrevisoes(snapshot.val());
+}, (err) => {
+    console.log("ERRO Firebase (previsão):");
+    console.log(err.message);
+});
+
+io.on("connection", (socket) => {
+    if (Object.keys(ultimaPrevisao).length > 0) {
+        socket.emit("forecast_update", ultimaPrevisao);
+    }
 });
 

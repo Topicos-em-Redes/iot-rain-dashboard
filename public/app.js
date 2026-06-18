@@ -16,9 +16,82 @@ const VCHUVA = 3700;
 //se (valor <= VSOL) sol 
 const VSOL = 4095;
 
-const canvas = document.getElementById("graficoTempoReal");
+const LIMITE_LEITURAS = 10;
 
-const canvasPrevisao = document.getElementById("graficoPrevisao");
+const canvas = document.getElementById("graficoChuva");
+
+let graficoCombinado = null;
+let previsaoPendente = null;
+const leiturasPendentes = [];
+
+function extrairValorSensor(data) {
+  if (data == null) return null;
+
+  if (typeof data === "object") {
+    return data.payload ?? data.valor ?? data.value ?? data.data;
+  }
+
+  const texto = String(data).trim();
+
+  if (texto.startsWith("{")) {
+    try {
+      const obj = JSON.parse(texto);
+      return obj.payload ?? obj.valor ?? obj.value ?? obj.data ?? texto;
+    } catch {
+      return texto;
+    }
+  }
+
+  return texto;
+}
+
+function formatarHorario(data) {
+  return new Date(data).toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function aplicarLeituraMqtt(msg) {
+  const valor = verificarValor(extrairValorSensor(msg.data));
+  const horario = formatarHorario(Date.now());
+
+  if (!graficoCombinado) {
+    leiturasPendentes.push({ valor, horario });
+    return;
+  }
+
+  document.getElementById("tituloGerenciamento").innerText = "Gerenciamento";
+  canvas.style.visibility = "visible";
+  graficoCombinado.adicionarLeitura(valor, horario);
+}
+
+window.addEventListener("mqtt_message", (event) => {
+  aplicarLeituraMqtt(event.detail);
+});
+
+function aplicarPrevisao(previsoes) {
+  if (!graficoCombinado) {
+    previsaoPendente = previsoes;
+    return;
+  }
+
+  document.getElementById("tituloGerenciamento").innerText = "Gerenciamento";
+  canvas.style.visibility = "visible";
+  graficoCombinado.atualizarPrevisao(previsoes);
+}
+
+window.addEventListener("forecast_update", (event) => {
+  aplicarPrevisao(event.detail);
+});
+
+function iconePorValor(valor) {
+  if (valor == null || Number.isNaN(valor)) return false;
+  if (valor <= VCHUVAF) return imgTempestadeIcon;
+  if (valor <= VCHUVA) return imgChuvaIcon;
+  return imgSolIcon;
+}
 
 //Funcão para carregar Icone do grafico
 function carregarImagem(img) {
@@ -32,73 +105,38 @@ function carregarImagem(img) {
   });
 }
 
+function iniciarGrafico() {
+  const ctx = canvas.getContext("2d");
+  graficoCombinado = criarGraficoCombinado(ctx);
+
+  canvas.style.visibility = "hidden";
+
+  if (previsaoPendente) {
+    aplicarPrevisao(previsaoPendente);
+    previsaoPendente = null;
+  }
+
+  if (leiturasPendentes.length > 0) {
+    document.getElementById("tituloGerenciamento").innerText = "Gerenciamento";
+    canvas.style.visibility = "visible";
+
+    for (const leitura of leiturasPendentes) {
+      graficoCombinado.adicionarLeitura(leitura.valor, leitura.horario);
+    }
+
+    leiturasPendentes.length = 0;
+  }
+}
+
 Promise.all([
 
   carregarImagem(imgSolIcon),
   carregarImagem(imgChuvaIcon),
   carregarImagem(imgTempestadeIcon),
 
-]).then(() => {
-
-  //criando a tela 1
-  const ctxGraficoTR = document
-    .getElementById("graficoTempoReal")
-    .getContext("2d");
-
-  //criando a tela 2
-  const ctxGraficoP = document
-    .getElementById("graficoPrevisao")
-    .getContext("2d");
-
-  
-
-  //criando o grafico da tela
-  const g1 = criarGrafico(
-    ctxGraficoTR,
-    10,
-    "Últimas 10 leituras do sensor de chuva",
-  );
-
-  const gPrevisao = criarGraficoPrevisao(
-    ctxGraficoP,
-    "Previsão dos próximos 30 minutos"
-  );
-
-  canvas.style.visibility = "hidden";
-  canvasPrevisao.style.visibility = "hidden";
-
-  //verifica se ha uma nova mensagem do mqtt
-  window.addEventListener("mqtt_message", (event) => {
-
-    const msg = event.detail;
-
-    const valor = msg.data;
-
-    const dado = verificarValor(valor);
-
-    const horario = new Date().toLocaleTimeString('pt-BR');
-
-    document.getElementById("tituloGerenciamento").innerText = "Gerenciamento";
-
-    canvas.style.visibility = "visible";
-
-    g1.adicionarDado(dado, horario);
-
-
-  });
-
-  window.addEventListener("forecast_update", (event) => {
-
-    document.getElementById("tituloGerenciamentoPrevisao").innerText = "";
-
-    canvasPrevisao.style.visibility = "visible";
-    
-    const previsoes = event.detail;
-
-    atualizarGraficoPrevisao(gPrevisao.grafico, previsoes);
-
-  });
-
+]).then(iniciarGrafico).catch((err) => {
+  console.error("Erro ao carregar icones do grafico:", err);
+  iniciarGrafico();
 });
 
 function verificarValor(valor) {
@@ -120,45 +158,80 @@ function verificarValor(valor) {
   return dado;
 }
 
-///////////////Função para criar o grafico //////////////////
-function criarGrafico(ctx, limite, legenda) {
-  //Dados que serão utilizados na contrução do grafico
+function normalizarTimestamp(timestamp) {
+  if (timestamp == null) return NaN;
+
+  if (typeof timestamp === "string" && Number.isNaN(Number(timestamp))) {
+    return Date.parse(timestamp);
+  }
+
+  const valor = Number(timestamp);
+  return valor < 1e12 ? valor * 1000 : valor;
+}
+
+function normalizarPrevisoes(previsoes) {
+  const entradas = Array.isArray(previsoes)
+    ? previsoes.map((item) => [item.id ?? "", item])
+    : Object.entries(previsoes || {});
+
+  return entradas
+    .filter(([, item]) => item && extrairValorSensor(item) != null)
+    .map(([id, item]) => ({
+      id,
+      timestamp: item.timestamp != null
+        ? normalizarTimestamp(item.timestamp)
+        : NaN,
+      valor: verificarValor(
+        item.payload ?? item.valor ?? item.value ?? extrairValorSensor(item)
+      ),
+    }))
+    .filter((item) => item.id && !Number.isNaN(item.timestamp))
+    .map((item) => ({
+      horario: formatarHorario(item.timestamp),
+      valor: item.valor,
+    }));
+}
+
+function criarGraficoCombinado(ctx) {
+  const leituras = { labels: [], valores: [] };
+  let previsao = { labels: [], valores: [] };
+
   const dados = {
     labels: [],
     datasets: [
       {
-        label: legenda,
+        label: "Leituras do sensor (MQTT)",
         data: [],
         borderColor: "black",
         borderWidth: 2,
         tension: 0.4,
-        pointRadius: 1,
+        pointRadius: 4,
         pointBorderWidth: 0,
-
-        //Verifica qual o valor do sensor, e envia o icone correspondente para a criação do ponto
-        pointStyle: (context) => {
-          const valor = context.raw;
-
-          if (valor <= VCHUVAF) return imgTempestadeIcon;
-
-          if (valor <= VCHUVA) return imgChuvaIcon;
-
-          return imgSolIcon;
-        },
+        spanGaps: false,
+        pointStyle: (context) => iconePorValor(context.raw),
+      },
+      {
+        label: "Previsão",
+        data: [],
+        borderColor: "red",
+        borderWidth: 2,
+        borderDash: [5, 5],
+        tension: 0.4,
+        pointRadius: 5,
+        pointStyle: (context) => iconePorValor(context.raw),
       },
     ],
   };
 
-  //Contrução do grafico
   const grafico = new Chart(ctx, {
     type: "line",
     data: dados,
     options: {
       responsive: true,
-
       scales: {
         y: {
           beginAtZero: true,
+          max: 4095,
           grace: "15%",
         },
         x: {
@@ -168,116 +241,47 @@ function criarGrafico(ctx, limite, legenda) {
     },
   });
 
-  //Função que insere os dados no grafico
-  function adicionarDado(valor, tempo) {
-    if (valor == null) return;
+  function atualizarGrafico() {
+    const nLeituras = leituras.labels.length;
+    const nPrevisao = previsao.labels.length;
 
-    dados.labels.push(tempo);
-    dados.datasets[0].data.push(valor);
-
-    if (dados.labels.length > limite) {
-      dados.labels.shift();
-      dados.datasets[0].data.shift();
-    }
+    dados.labels = [...leituras.labels, ...previsao.labels];
+    dados.datasets[0].data = [
+      ...leituras.valores,
+      ...Array(nPrevisao).fill(null),
+    ];
+    dados.datasets[1].data = [
+      ...Array(nLeituras).fill(null),
+      ...previsao.valores,
+    ];
 
     grafico.update();
   }
 
-  return { adicionarDado, grafico };
-}
+  function adicionarLeitura(valor, tempo) {
+    if (valor == null) return;
 
-function atualizarGraficoPrevisao(grafico, previsoes) {
+    leituras.labels.push(tempo);
+    leituras.valores.push(valor);
 
-  if (!Array.isArray(previsoes)) return;
-
-  const labels = [];
-  const valores = [];
-
-  previsoes
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .forEach(item => {
-
-      const horario = new Date(item.timestamp)
-        .toLocaleTimeString("pt-BR", {
-          hour: "2-digit",
-          minute: "2-digit"
-        });
-
-      labels.push(horario);
-
-      valores.push(verificarValor(item.payload));
-
-    });
-
-  grafico.data.labels = labels;
-  grafico.data.datasets[0].data = valores;
-
-  grafico.update();
-
-}
-
-function criarGraficoPrevisao(ctx, legenda) {
-
-  const dados = {
-
-    labels: [],
-
-    datasets: [
-      {
-        label: legenda,
-
-        data: [],
-
-        borderColor: "red",
-
-        borderWidth: 2,
-
-        borderDash: [5, 5],
-
-        tension: 0.4,
-
-        pointRadius: 5,
-
-        pointStyle: (context) => {
-
-          const valor = context.raw;
-
-          if (valor <= VCHUVAF) return imgTempestadeIcon;
-
-          if (valor <= VCHUVA) return imgChuvaIcon;
-
-          return imgSolIcon;
-        }
-      }
-    ]
-  };
-
-  const grafico = new Chart(ctx, {
-
-    type: "line",
-
-    data: dados,
-
-    options: {
-
-      responsive: true,
-
-      scales: {
-
-        y: {
-
-          beginAtZero: true,
-
-          max: 4095
-
-        }
-
-      }
-
+    if (leituras.labels.length > LIMITE_LEITURAS) {
+      leituras.labels.shift();
+      leituras.valores.shift();
     }
 
-  });
+    atualizarGrafico();
+  }
 
-  return { grafico };
+  function atualizarPrevisao(previsoes) {
+    const itens = normalizarPrevisoes(previsoes);
 
+    previsao = {
+      labels: itens.map((item) => item.horario),
+      valores: itens.map((item) => item.valor),
+    };
+
+    atualizarGrafico();
+  }
+
+  return { adicionarLeitura, atualizarPrevisao, grafico };
 }
